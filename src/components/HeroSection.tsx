@@ -97,7 +97,7 @@ export default function HeroSection() {
           className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16"
         >
           <Link
-            href="#waitlist"
+            href="/waitlist"
             className="group flex items-center gap-2 btn-primary text-base px-8 py-4"
           >
             {t.hero.cta1}

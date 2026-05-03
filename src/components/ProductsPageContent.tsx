@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { Zap, Globe, Building2, Code2, ShieldCheck, Repeat, BarChart3, Users } from "lucide-react";
 import FeatureCard from "./FeatureCard";
+import PaymentCalculator from "./PaymentCalculator";
 import { useI18n } from "@/lib/i18n";
 
 const fadeUp = {
@@ -115,6 +116,31 @@ export default function ProductsPageContent() {
               <FeatureCard key={f.title} icon={f.icon} title={f.title} description={f.description} index={i} />
             ))}
           </div>
+        </section>
+
+        {/* Payment Calculator */}
+        <section className="mt-28">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-10"
+          >
+            <span className="text-blue-400 text-sm font-semibold uppercase tracking-widest">
+              {isEn ? "See it in action" : "Se det i praksis"}
+            </span>
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-white mt-3">
+              {isEn ? "Calculate your savings" : "Beregn besparelsene dine"}
+            </h2>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.1 }}
+          >
+            <PaymentCalculator />
+          </motion.div>
         </section>
 
         {/* API section */}

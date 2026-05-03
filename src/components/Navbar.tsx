@@ -73,7 +73,7 @@ export default function Navbar() {
               </button>
 
               <Link
-                href="#waitlist"
+                href="/waitlist"
                 className="btn-primary text-sm"
               >
                 {t.nav.getStarted}
@@ -120,7 +120,7 @@ export default function Navbar() {
                   {locale === "en" ? "Norsk" : "English"}
                 </button>
                 <Link
-                  href="#waitlist"
+                  href="/waitlist"
                   onClick={() => setMobileOpen(false)}
                   className="btn-primary text-sm flex-1 text-center"
                 >
