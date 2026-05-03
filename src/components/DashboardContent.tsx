@@ -8,6 +8,7 @@ import {
   Loader2, ArrowRight, ChevronDown, Globe, AlertTriangle, Wallet
 } from "lucide-react";
 import Link from "next/link";
+import { useUser, UserButton } from "@clerk/nextjs";
 import {
   useAccount, useBalance, useSendTransaction, useChainId, useWaitForTransactionReceipt
 } from "wagmi";
@@ -336,6 +337,13 @@ function LiveWalletCard() {
 export default function DashboardContent() {
   const [showBalance, setShowBalance] = useState(true);
   const [sendOpen, setSendOpen] = useState(false);
+  const { user } = useUser();
+
+  const greeting = user?.firstName
+    ? `Good morning, ${user.firstName}`
+    : user?.primaryEmailAddress?.emailAddress
+    ? `Good morning, ${user.primaryEmailAddress.emailAddress.split("@")[0]}`
+    : "Dashboard";
 
   return (
     <>
@@ -343,7 +351,7 @@ export default function DashboardContent() {
 
       <div className="min-h-screen bg-navy-900 bg-grid">
         {/* Top bar */}
-        <div className="glass border-b border-white/5 px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between sticky top-0 z-30">
+        <div className="glass border-b border-white/5 px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between sticky top-0 z-30">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg bg-blue-500 flex items-center justify-center glow-blue-sm">
               <Zap className="w-3.5 h-3.5 text-white fill-white" />
@@ -354,10 +362,24 @@ export default function DashboardContent() {
           <div className="flex items-center gap-3">
             <ConnectButton />
             <Link href="/" className="text-white/40 hover:text-white text-xs transition-colors hidden sm:inline">← Site</Link>
+            <UserButton
+              appearance={{
+                elements: {
+                  avatarBox: "w-8 h-8 rounded-xl",
+                  userButtonTrigger: "focus:ring-0 focus:ring-offset-0",
+                },
+              }}
+            />
           </div>
         </div>
 
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-5">
+
+          {/* Page header */}
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+            <h1 className="text-2xl font-bold text-white">{greeting}</h1>
+            <p className="text-white/40 text-sm mt-0.5">Here&apos;s your Malvik overview</p>
+          </motion.div>
 
           {/* Live wallet card */}
           <LiveWalletCard />

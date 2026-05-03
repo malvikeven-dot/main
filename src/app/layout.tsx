@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import { ClerkProvider } from "@clerk/nextjs";
 import { I18nProvider } from "@/lib/i18n";
 import Web3Provider from "@/components/Web3Provider";
 
@@ -37,12 +38,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={inter.variable}>
-      <body className={`${inter.className} antialiased`}>
-        <Web3Provider>
-          <I18nProvider>{children}</I18nProvider>
-        </Web3Provider>
-      </body>
-    </html>
+    <ClerkProvider
+      signInUrl="/sign-in"
+      signUpUrl="/sign-up"
+      afterSignOutUrl="/"
+    >
+      <html lang="en" className={inter.variable}>
+        <body className={`${inter.className} antialiased`}>
+          <Web3Provider>
+            <I18nProvider>{children}</I18nProvider>
+          </Web3Provider>
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }
