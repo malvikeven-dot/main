@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, Zap } from "lucide-react";
+import { Menu, X, Zap, LayoutDashboard } from "lucide-react";
+import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
@@ -72,12 +73,35 @@ export default function Navbar() {
                 {locale === "en" ? "NO" : "EN"}
               </button>
 
-              <Link
-                href="/waitlist"
-                className="btn-primary text-sm"
-              >
-                {t.nav.getStarted}
-              </Link>
+              <SignedOut>
+                <Link
+                  href="/sign-in"
+                  className="text-sm text-white/70 hover:text-white transition-colors font-medium"
+                >
+                  Sign in
+                </Link>
+                <Link href="/sign-up" className="btn-primary text-sm">
+                  Sign up
+                </Link>
+              </SignedOut>
+
+              <SignedIn>
+                <Link
+                  href="/dashboard"
+                  className="flex items-center gap-1.5 text-sm text-white/70 hover:text-white transition-colors font-medium"
+                >
+                  <LayoutDashboard className="w-4 h-4" />
+                  Dashboard
+                </Link>
+                <UserButton
+                  appearance={{
+                    elements: {
+                      avatarBox: "w-8 h-8 rounded-xl",
+                      userButtonTrigger: "focus:ring-0 focus:ring-offset-0",
+                    },
+                  }}
+                />
+              </SignedIn>
             </div>
 
             {/* Mobile hamburger */}
@@ -119,13 +143,37 @@ export default function Navbar() {
                 >
                   {locale === "en" ? "Norsk" : "English"}
                 </button>
-                <Link
-                  href="/waitlist"
-                  onClick={() => setMobileOpen(false)}
-                  className="btn-primary text-sm flex-1 text-center"
-                >
-                  {t.nav.getStarted}
-                </Link>
+                <SignedOut>
+                  <Link
+                    href="/sign-in"
+                    onClick={() => setMobileOpen(false)}
+                    className="btn-secondary text-sm px-4 py-2 border border-white/20"
+                  >
+                    Sign in
+                  </Link>
+                  <Link
+                    href="/sign-up"
+                    onClick={() => setMobileOpen(false)}
+                    className="btn-primary text-sm flex-1 text-center"
+                  >
+                    Sign up
+                  </Link>
+                </SignedOut>
+                <SignedIn>
+                  <Link
+                    href="/dashboard"
+                    onClick={() => setMobileOpen(false)}
+                    className="btn-primary text-sm flex-1 text-center flex items-center justify-center gap-2"
+                  >
+                    <LayoutDashboard className="w-4 h-4" />
+                    Dashboard
+                  </Link>
+                  <UserButton
+                    appearance={{
+                      elements: { avatarBox: "w-8 h-8 rounded-xl" },
+                    }}
+                  />
+                </SignedIn>
               </div>
             </div>
           </motion.div>
