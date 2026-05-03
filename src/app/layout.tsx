@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { I18nProvider } from "@/lib/i18n";
+import Web3Provider from "@/components/Web3Provider";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -38,7 +39,9 @@ export default function RootLayout({
   return (
     <html lang="en" className={inter.variable}>
       <body className={`${inter.className} antialiased`}>
-        <I18nProvider>{children}</I18nProvider>
+        <Web3Provider>
+          <I18nProvider>{children}</I18nProvider>
+        </Web3Provider>
       </body>
     </html>
   );

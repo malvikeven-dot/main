@@ -5,62 +5,84 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Zap, ArrowUpRight, ArrowDownLeft, Send, Plus, RefreshCw,
   TrendingUp, Eye, EyeOff, Clock, CheckCircle2, Copy, ExternalLink, X,
-  Loader2, ArrowRight, ChevronDown, Globe
+  Loader2, ArrowRight, ChevronDown, Globe, AlertTriangle, Wallet
 } from "lucide-react";
 import Link from "next/link";
+import {
+  useAccount, useBalance, useSendTransaction, useChainId, useWaitForTransactionReceipt
+} from "wagmi";
+import { parseEther, isAddress } from "viem";
+import { baseSepolia } from "@/lib/wagmi";
+import { ConnectButton } from "./WalletConnect";
 
 // ─── Mock data ────────────────────────────────────────────────────────────────
 
-const MOCK_BALANCE = { noks: 12_450.00, usd_equiv: 1094.60 };
+const MOCK_BALANCE_NOKS = 12_450.00;
 
 const MOCK_TXS = [
-  { id: "tx1", type: "sent", label: "Invoice payment — Acme GmbH", amount: -2500.00, currency: "NOKS", to: "0x3f4...a8c", time: "2 min ago", status: "confirmed", flag: "🇩🇪" },
-  { id: "tx2", type: "received", label: "Client payment — Bergström AB", amount: +8000.00, currency: "NOKS", from: "0x7b1...d2e", time: "1 hour ago", status: "confirmed", flag: "🇸🇪" },
-  { id: "tx3", type: "sent", label: "Supplier — Manila Logistics", amount: -1250.00, currency: "NOKS", to: "0x9c2...f3d", time: "Yesterday", status: "confirmed", flag: "🇵🇭" },
-  { id: "tx4", type: "received", label: "Top-up from DNB", amount: +5000.00, currency: "NOKS", from: "DNB Bank", time: "2 days ago", status: "confirmed", flag: "🇳🇴" },
-  { id: "tx5", type: "sent", label: "Freelancer — Priya Sharma", amount: -900.00, currency: "NOKS", to: "0x2e8...b1a", time: "3 days ago", status: "confirmed", flag: "🇮🇳" },
-  { id: "tx6", type: "sent", label: "Office supplies — Amazon DE", amount: -350.00, currency: "NOKS", to: "0x5a7...c4f", time: "5 days ago", status: "confirmed", flag: "🇩🇪" },
+  { id: "tx1", type: "sent",     label: "Invoice — Acme GmbH",       amount: -2500,  currency: "NOKS", time: "2 min ago",   flag: "🇩🇪" },
+  { id: "tx2", type: "received", label: "Payment — Bergström AB",    amount: +8000,  currency: "NOKS", time: "1 hour ago",  flag: "🇸🇪" },
+  { id: "tx3", type: "sent",     label: "Supplier — Manila Logistics",amount: -1250, currency: "NOKS", time: "Yesterday",   flag: "🇵🇭" },
+  { id: "tx4", type: "received", label: "Top-up from DNB",           amount: +5000,  currency: "NOKS", time: "2 days ago",  flag: "🇳🇴" },
+  { id: "tx5", type: "sent",     label: "Freelancer — Priya Sharma", amount: -900,   currency: "NOKS", time: "3 days ago",  flag: "🇮🇳" },
+  { id: "tx6", type: "sent",     label: "Office supplies — Amazon",  amount: -350,   currency: "NOKS", time: "5 days ago",  flag: "🇩🇪" },
 ];
 
-const QUICK_SEND = [
-  { initials: "AG", name: "Acme GmbH", address: "0x3f4...a8c", flag: "🇩🇪" },
-  { initials: "BS", name: "Bergström AB", address: "0x7b1...d2e", flag: "🇸🇪" },
-  { initials: "PS", name: "Priya Sharma", address: "0x2e8...b1a", flag: "🇮🇳" },
-];
+function truncate(addr: string) {
+  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+}
 
-const CURRENCIES = ["NOKS", "USDC", "EURC"];
+function fmt(n: number, d = 2) {
+  return n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+}
 
 // ─── Send Modal ───────────────────────────────────────────────────────────────
 
 function SendModal({ onClose }: { onClose: () => void }) {
+  const { address, isConnected } = useAccount();
+  const chainId = useChainId();
+  const onCorrectChain = chainId === baseSepolia.id;
+
   const [step, setStep] = useState<"form" | "confirm" | "sending" | "done">("form");
   const [recipient, setRecipient] = useState("");
-  const [amount, setAmount] = useState("");
-  const [currency, setCurrency] = useState("NOKS");
-  const [note, setNote] = useState("");
+  const [amount, setAmount]       = useState("");
+  const [note, setNote]           = useState("");
+  const [txHash, setTxHash]       = useState<`0x${string}` | undefined>();
+  const [mockMode, setMockMode]   = useState(false);
 
-  const canProceed = recipient.trim() && parseFloat(amount) > 0;
+  const { sendTransaction, isPending: isSending } = useSendTransaction();
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash: txHash });
 
-  const handleConfirm = async () => {
+  const validRecipient = recipient.trim().length > 0 && (isAddress(recipient) || !isConnected);
+  const validAmount = parseFloat(amount) > 0;
+  const canProceed = validRecipient && validAmount;
+
+  const handleSend = () => {
+    if (!isConnected || !onCorrectChain || mockMode) {
+      // mock flow
+      setStep("sending");
+      setTimeout(() => { setStep("done"); }, 2000);
+      return;
+    }
     setStep("sending");
-    await new Promise((r) => setTimeout(r, 2000));
-    setStep("done");
+    sendTransaction(
+      { to: recipient as `0x${string}`, value: parseEther(amount) },
+      {
+        onSuccess: (hash) => { setTxHash(hash); setStep("done"); },
+        onError: () => setStep("confirm"),
+      }
+    );
   };
 
   const inputCls = "w-full bg-white/5 border border-white/15 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all text-sm";
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: "rgba(10,15,44,0.85)", backdropFilter: "blur(8px)" }}
+      style={{ background: "rgba(10,15,44,0.88)", backdropFilter: "blur(8px)" }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
+      <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
         className="glass rounded-3xl p-6 sm:p-8 w-full max-w-md border border-white/15 relative"
       >
@@ -71,108 +93,115 @@ function SendModal({ onClose }: { onClose: () => void }) {
         <AnimatePresence mode="wait">
           {step === "form" && (
             <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <h2 className="text-xl font-bold text-white mb-6">Send NOKS</h2>
+              <h2 className="text-xl font-bold text-white mb-1">Send ETH</h2>
+              <p className="text-white/40 text-xs mb-5">
+                {isConnected && onCorrectChain
+                  ? <>Live on <span className="text-blue-400">Base Sepolia</span> testnet</>
+                  : <span className="text-yellow-400">Wallet not connected — using mock mode</span>}
+              </p>
 
-              {/* Quick send */}
-              <div className="mb-5">
-                <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-2">Recent</p>
-                <div className="flex gap-2 overflow-x-auto pb-1">
-                  {QUICK_SEND.map((c) => (
-                    <button key={c.name} onClick={() => setRecipient(c.address)}
-                      className={`flex flex-col items-center gap-1.5 px-4 py-2.5 rounded-xl border transition-all flex-shrink-0 ${recipient === c.address ? "glass-blue border-blue-400/40" : "glass border-white/10 hover:border-white/20"}`}>
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-xs font-bold text-white">
-                        {c.initials}
-                      </div>
-                      <span className="text-white/70 text-xs">{c.name.split(" ")[0]}</span>
-                      <span className="text-white/30 text-xs">{c.flag}</span>
-                    </button>
-                  ))}
+              {/* Wallet not connected warning */}
+              {!isConnected && (
+                <div className="flex items-start gap-3 bg-yellow-500/10 border border-yellow-500/25 rounded-xl p-3 mb-5 text-sm">
+                  <AlertTriangle className="w-4 h-4 text-yellow-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-yellow-300/80 text-xs">
+                    Connect your wallet to send a real on-chain transaction. This will run as a mock demo.
+                  </p>
                 </div>
-              </div>
+              )}
 
-              {/* Recipient */}
+              {/* Wrong chain warning */}
+              {isConnected && !onCorrectChain && (
+                <div className="flex items-start gap-3 bg-yellow-500/10 border border-yellow-500/25 rounded-xl p-3 mb-5 text-sm">
+                  <AlertTriangle className="w-4 h-4 text-yellow-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-yellow-300/80 text-xs">
+                    Switch to Base Sepolia in your wallet to send a real transaction.
+                  </p>
+                </div>
+              )}
+
               <div className="mb-4">
-                <label className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-2 block">To (address or name)</label>
+                <label className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-2 block">
+                  To {isConnected ? "(wallet address)" : "(address or name)"}
+                </label>
                 <input type="text" value={recipient} onChange={(e) => setRecipient(e.target.value)}
-                  placeholder="0x... or ENS name" className={inputCls} />
+                  placeholder="0x..." className={inputCls} />
+                {recipient && isConnected && !isAddress(recipient) && (
+                  <p className="text-red-400 text-xs mt-1">Invalid Ethereum address</p>
+                )}
               </div>
 
-              {/* Amount + currency */}
               <div className="mb-4">
-                <label className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-2 block">Amount</label>
-                <div className="flex gap-2">
-                  <input type="number" min="0" value={amount} onChange={(e) => setAmount(e.target.value)}
-                    placeholder="0.00" className={`${inputCls} flex-1`} />
-                  <select value={currency} onChange={(e) => setCurrency(e.target.value)}
-                    className="bg-white/5 border border-white/15 rounded-xl px-3 py-3 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 cursor-pointer appearance-none">
-                    {CURRENCIES.map((c) => (
-                      <option key={c} value={c} style={{ background: "#0A0F2C" }}>{c}</option>
-                    ))}
-                  </select>
-                </div>
-                <p className="text-white/30 text-xs mt-1">Balance: {MOCK_BALANCE.noks.toLocaleString()} NOKS</p>
+                <label className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-2 block">
+                  Amount (ETH)
+                </label>
+                <input type="number" min="0" step="0.001" value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="0.001" className={inputCls} />
+                {isConnected && <LiveBalance address={address} />}
               </div>
 
-              {/* Note */}
               <div className="mb-6">
-                <label className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-2 block">Note (optional)</label>
+                <label className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-2 block">
+                  Note (optional)
+                </label>
                 <input type="text" value={note} onChange={(e) => setNote(e.target.value)}
                   placeholder="Invoice #, reference…" className={inputCls} />
               </div>
 
               <button onClick={() => setStep("confirm")} disabled={!canProceed}
                 className="w-full btn-primary flex items-center justify-center gap-2 py-3.5 disabled:opacity-40">
-                Review payment <ArrowRight className="w-4 h-4" />
+                Review <ArrowRight className="w-4 h-4" />
               </button>
             </motion.div>
           )}
 
           {step === "confirm" && (
             <motion.div key="confirm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <h2 className="text-xl font-bold text-white mb-6">Confirm payment</h2>
+              <h2 className="text-xl font-bold text-white mb-6">Confirm transaction</h2>
               <div className="glass-blue rounded-2xl p-5 border border-blue-500/25 space-y-3 mb-6">
                 <div className="flex justify-between text-sm">
                   <span className="text-white/40">To</span>
-                  <span className="text-white font-mono text-xs">{recipient}</span>
+                  <span className="text-white font-mono text-xs">{truncate(recipient)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-white/40">Amount</span>
-                  <span className="text-white font-bold">{parseFloat(amount).toLocaleString()} {currency}</span>
+                  <span className="text-white font-bold">{amount} ETH</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-white/40">Network fee (0.3%)</span>
-                  <span className="text-green-400">{(parseFloat(amount) * 0.003).toFixed(4)} {currency}</span>
-                </div>
-                {note && <div className="flex justify-between text-sm">
-                  <span className="text-white/40">Note</span>
-                  <span className="text-white/70">{note}</span>
-                </div>}
-                <div className="pt-2 border-t border-white/10 flex justify-between text-sm">
-                  <span className="text-white/40">Total deducted</span>
-                  <span className="text-white font-bold">{(parseFloat(amount) * 1.003).toFixed(2)} {currency}</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm">
+                {note && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-white/40">Note</span>
+                    <span className="text-white/70">{note}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 text-sm pt-1 border-t border-white/10">
                   <Clock className="w-3.5 h-3.5 text-blue-400" />
-                  <span className="text-blue-300">~8 seconds on Base</span>
+                  <span className="text-blue-300">~2 seconds on Base Sepolia</span>
+                </div>
+                <div className="text-xs text-white/30">
+                  Network: Base Sepolia testnet (no real value)
                 </div>
               </div>
               <div className="flex gap-3">
                 <button onClick={() => setStep("form")} className="flex-1 btn-secondary py-3 border border-white/15">Back</button>
-                <button onClick={handleConfirm} className="flex-1 btn-primary py-3 flex items-center justify-center gap-2">
-                  Confirm & send <Zap className="w-4 h-4" />
+                <button onClick={handleSend} disabled={isSending}
+                  className="flex-1 btn-primary py-3 flex items-center justify-center gap-2 disabled:opacity-60">
+                  {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Send className="w-4 h-4" /> Send</>}
                 </button>
               </div>
             </motion.div>
           )}
 
-          {step === "sending" && (
+          {(step === "sending" || isConfirming) && (
             <motion.div key="sending" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="text-center py-8">
               <div className="w-16 h-16 rounded-full glass-blue border border-blue-400/30 flex items-center justify-center mx-auto mb-4">
                 <Loader2 className="w-7 h-7 text-blue-400 animate-spin" />
               </div>
-              <h3 className="text-white font-bold text-lg mb-2">Broadcasting transaction…</h3>
-              <p className="text-white/40 text-sm">Minting NOKS and settling on Base</p>
+              <h3 className="text-white font-bold text-lg mb-2">
+                {txHash ? "Waiting for confirmation…" : "Broadcasting transaction…"}
+              </h3>
+              <p className="text-white/40 text-sm">Settling on Base Sepolia</p>
             </motion.div>
           )}
 
@@ -182,17 +211,34 @@ function SendModal({ onClose }: { onClose: () => void }) {
               <div className="w-16 h-16 rounded-full bg-green-500/15 border border-green-500/30 flex items-center justify-center mx-auto mb-4">
                 <CheckCircle2 className="w-8 h-8 text-green-400" />
               </div>
-              <h3 className="text-white font-bold text-xl mb-2">Payment sent!</h3>
-              <p className="text-white/50 text-sm mb-6">
-                {parseFloat(amount).toLocaleString()} {currency} delivered in ~8 seconds.
+              <h3 className="text-white font-bold text-xl mb-2">
+                {txHash ? "Transaction confirmed!" : "Payment sent (mock)!"}
+              </h3>
+              <p className="text-white/50 text-sm mb-5">
+                {amount} ETH sent{txHash ? " on Base Sepolia" : " (simulated)"}.
               </p>
-              <div className="glass rounded-xl p-3 text-left text-xs font-mono text-white/40 mb-6 flex items-center justify-between">
-                <span>0x7f3a...4e9c1d</span>
-                <div className="flex gap-2">
-                  <Copy className="w-3.5 h-3.5 hover:text-white cursor-pointer transition-colors" />
-                  <ExternalLink className="w-3.5 h-3.5 hover:text-white cursor-pointer transition-colors" />
+
+              {txHash && (
+                <div className="glass rounded-xl p-3 text-left text-xs font-mono text-white/50 mb-5 flex items-center justify-between">
+                  <span className="truncate mr-2">{txHash}</span>
+                  <div className="flex gap-2 flex-shrink-0">
+                    <button onClick={() => navigator.clipboard.writeText(txHash)}>
+                      <Copy className="w-3.5 h-3.5 hover:text-white cursor-pointer transition-colors" />
+                    </button>
+                    <a href={`https://sepolia.basescan.org/tx/${txHash}`} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="w-3.5 h-3.5 hover:text-white cursor-pointer transition-colors" />
+                    </a>
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {txHash && (
+                <a href={`https://sepolia.basescan.org/tx/${txHash}`} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-1.5 text-blue-400 text-sm hover:text-blue-300 transition-colors mb-5">
+                  View on BaseScan <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              )}
+
               <button onClick={onClose} className="w-full btn-primary py-3">Done</button>
             </motion.div>
           )}
@@ -202,7 +248,90 @@ function SendModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-// ─── Dashboard ────────────────────────────────────────────────────────────────
+// ─── Live balance subcomponent ────────────────────────────────────────────────
+
+function LiveBalance({ address }: { address?: `0x${string}` }) {
+  const { data, isLoading } = useBalance({ address, chainId: baseSepolia.id });
+  if (!address) return null;
+  return (
+    <p className="text-white/30 text-xs mt-1">
+      Balance:{" "}
+      {isLoading ? "loading…" : data ? `${parseFloat(data.formatted).toFixed(4)} ${data.symbol}` : "—"}
+    </p>
+  );
+}
+
+// ─── Live wallet card ─────────────────────────────────────────────────────────
+
+function LiveWalletCard() {
+  const { address, isConnected } = useAccount();
+  const { data: balance, isLoading } = useBalance({ address, chainId: baseSepolia.id });
+  const chainId = useChainId();
+  const onCorrectChain = chainId === baseSepolia.id;
+
+  if (!isConnected) {
+    return (
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
+        className="glass rounded-2xl border border-white/10 p-6 flex flex-col sm:flex-row items-center gap-4">
+        <div className="w-12 h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+          <Wallet className="w-6 h-6 text-blue-400" />
+        </div>
+        <div className="flex-1 text-center sm:text-left">
+          <p className="text-white font-semibold mb-1">Connect your wallet</p>
+          <p className="text-white/40 text-sm">
+            Link a real wallet to see your live Base Sepolia ETH balance and send on-chain transactions.
+          </p>
+        </div>
+        <ConnectButton />
+      </motion.div>
+    );
+  }
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
+      className="glass rounded-2xl border border-blue-500/25 p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+          <span className="text-white/60 text-xs font-semibold uppercase tracking-wider">Live wallet</span>
+          {!onCorrectChain && (
+            <span className="text-xs bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded-full">Wrong network</span>
+          )}
+        </div>
+        <ConnectButton />
+      </div>
+
+      <div className="flex items-end justify-between">
+        <div>
+          <p className="text-white/40 text-xs mb-0.5">Address</p>
+          <p className="text-white font-mono text-sm">{truncate(address!)}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-white/40 text-xs mb-0.5">ETH balance</p>
+          <p className="text-white font-bold text-lg">
+            {isLoading ? (
+              <span className="text-white/30 text-sm">loading…</span>
+            ) : balance ? (
+              <>{parseFloat(balance.formatted).toFixed(4)} <span className="text-blue-400 text-sm">ETH</span></>
+            ) : "—"}
+          </p>
+        </div>
+      </div>
+
+      {onCorrectChain && (
+        <div className="flex items-center justify-between pt-2 border-t border-white/10 text-xs text-white/30">
+          <span>Base Sepolia testnet</span>
+          <a href="https://www.alchemy.com/faucets/base-sepolia" target="_blank" rel="noopener noreferrer"
+            className="text-blue-400 hover:text-blue-300 flex items-center gap-1 transition-colors">
+            Get test ETH <ExternalLink className="w-3 h-3" />
+          </a>
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+// ─── Main dashboard ───────────────────────────────────────────────────────────
 
 export default function DashboardContent() {
   const [showBalance, setShowBalance] = useState(true);
@@ -210,9 +339,7 @@ export default function DashboardContent() {
 
   return (
     <>
-      <AnimatePresence>
-        {sendOpen && <SendModal onClose={() => setSendOpen(false)} />}
-      </AnimatePresence>
+      <AnimatePresence>{sendOpen && <SendModal onClose={() => setSendOpen(false)} />}</AnimatePresence>
 
       <div className="min-h-screen bg-navy-900 bg-grid">
         {/* Top bar */}
@@ -225,39 +352,36 @@ export default function DashboardContent() {
             <span className="hidden sm:inline text-white/20 text-sm ml-1">/ Dashboard</span>
           </div>
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 glass rounded-full px-3 py-1.5 border border-white/10">
-              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-xs font-bold text-white">K</div>
-              <span className="text-white/70 text-xs font-medium hidden sm:inline">Kari N.</span>
-            </div>
-            <Link href="/" className="text-white/40 hover:text-white text-xs transition-colors">← Site</Link>
+            <ConnectButton />
+            <Link href="/" className="text-white/40 hover:text-white text-xs transition-colors hidden sm:inline">← Site</Link>
           </div>
         </div>
 
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-5">
 
-          {/* Balance card */}
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4 }}
+          {/* Live wallet card */}
+          <LiveWalletCard />
+
+          {/* Mock NOKS balance card */}
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.1 }}
             className="glass-blue rounded-3xl p-6 sm:p-8 border border-blue-400/25 relative overflow-hidden glow-blue"
           >
-            {/* BG blob */}
             <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full pointer-events-none"
               style={{ background: "radial-gradient(circle, rgba(45,106,255,0.2) 0%, transparent 70%)" }} />
 
             <div className="relative">
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-1">Total balance</p>
+                  <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-1">NOKS balance</p>
                   <div className="flex items-end gap-3">
                     <h1 className="text-4xl sm:text-5xl font-extrabold text-white">
-                      {showBalance ? MOCK_BALANCE.noks.toLocaleString("en-US", { minimumFractionDigits: 2 }) : "••••••"}
+                      {showBalance ? fmt(MOCK_BALANCE_NOKS) : "••••••"}
                     </h1>
                     <span className="text-blue-400 font-bold text-xl mb-1">NOKS</span>
                   </div>
                   <p className="text-white/30 text-sm mt-1">
-                    ≈ ${showBalance ? MOCK_BALANCE.usd_equiv.toLocaleString() : "••••"} USD
+                    ≈ ${showBalance ? fmt(MOCK_BALANCE_NOKS * 0.088) : "••••"} USD · mock balance
                   </p>
                 </div>
                 <button onClick={() => setShowBalance(!showBalance)}
@@ -266,7 +390,6 @@ export default function DashboardContent() {
                 </button>
               </div>
 
-              {/* Action buttons */}
               <div className="flex flex-wrap gap-3">
                 <button onClick={() => setSendOpen(true)}
                   className="btn-primary flex items-center gap-2 px-5 py-2.5 text-sm">
@@ -282,17 +405,15 @@ export default function DashboardContent() {
             </div>
           </motion.div>
 
-          {/* Stats row */}
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.08 }}
+          {/* Stats */}
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.18 }}
             className="grid grid-cols-3 gap-4"
           >
             {[
-              { label: "Sent this month", value: "kr 5,000", sub: "3 transactions", icon: ArrowUpRight, color: "text-red-400" },
-              { label: "Received", value: "kr 13,000", sub: "2 transactions", icon: ArrowDownLeft, color: "text-green-400" },
-              { label: "Avg. fee paid", value: "0.3%", sub: "vs 3.5% bank avg", icon: TrendingUp, color: "text-blue-400" },
+              { label: "Sent this month",  value: "kr 5,000",  sub: "3 transactions",       icon: ArrowUpRight,  color: "text-red-400" },
+              { label: "Received",         value: "kr 13,000", sub: "2 transactions",       icon: ArrowDownLeft, color: "text-green-400" },
+              { label: "Avg. fee paid",    value: "0.3%",      sub: "vs 3.5% bank avg",     icon: TrendingUp,    color: "text-blue-400" },
             ].map((s) => (
               <div key={s.label} className="glass rounded-2xl p-4 sm:p-5 border border-white/5">
                 <s.icon className={`w-4 h-4 ${s.color} mb-3`} />
@@ -304,10 +425,8 @@ export default function DashboardContent() {
           </motion.div>
 
           {/* Transactions */}
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.16 }}
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.24 }}
             className="glass rounded-2xl border border-white/10 overflow-hidden"
           >
             <div className="flex items-center justify-between px-6 py-4 border-b border-white/5">
@@ -318,21 +437,16 @@ export default function DashboardContent() {
             </div>
             <div className="divide-y divide-white/5">
               {MOCK_TXS.map((tx, i) => (
-                <motion.div
-                  key={tx.id}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.3, delay: 0.2 + i * 0.05 }}
+                <motion.div key={tx.id}
+                  initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.3, delay: 0.28 + i * 0.05 }}
                   className="flex items-center gap-4 px-6 py-4 hover:bg-white/3 transition-colors group"
                 >
-                  {/* Icon */}
                   <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${tx.type === "sent" ? "bg-red-500/10" : "bg-green-500/10"}`}>
                     {tx.type === "sent"
                       ? <ArrowUpRight className="w-4 h-4 text-red-400" />
                       : <ArrowDownLeft className="w-4 h-4 text-green-400" />}
                   </div>
-
-                  {/* Label */}
                   <div className="flex-1 min-w-0">
                     <p className="text-white text-sm font-medium truncate">{tx.flag} {tx.label}</p>
                     <div className="flex items-center gap-2 mt-0.5">
@@ -342,15 +456,12 @@ export default function DashboardContent() {
                       </span>
                     </div>
                   </div>
-
-                  {/* Amount */}
                   <div className="text-right flex-shrink-0">
                     <p className={`font-bold text-sm ${tx.amount < 0 ? "text-red-400" : "text-green-400"}`}>
-                      {tx.amount > 0 ? "+" : ""}{tx.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                      {tx.amount > 0 ? "+" : ""}{fmt(tx.amount)}
                     </p>
                     <p className="text-white/30 text-xs">{tx.currency}</p>
                   </div>
-
                   <ExternalLink className="w-3.5 h-3.5 text-white/15 group-hover:text-white/40 transition-colors flex-shrink-0" />
                 </motion.div>
               ))}
@@ -361,7 +472,8 @@ export default function DashboardContent() {
           <div className="flex items-center gap-3 glass rounded-2xl px-5 py-3.5 border border-yellow-500/20 text-sm">
             <Globe className="w-4 h-4 text-yellow-400 flex-shrink-0" />
             <p className="text-white/50">
-              <span className="text-yellow-400 font-semibold">Prototype mode</span> — data is simulated. No real transactions are processed.
+              <span className="text-yellow-400 font-semibold">Prototype</span> — NOKS balance is simulated.
+              Connect a wallet to send real ETH on Base Sepolia testnet.
             </p>
           </div>
 
