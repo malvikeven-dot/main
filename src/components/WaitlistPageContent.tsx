@@ -50,8 +50,18 @@ export default function WaitlistPageContent() {
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
     setErrors({});
     setStatus("loading");
-    await new Promise((r) => setTimeout(r, 1400));
-    setStatus("success");
+    try {
+      const res = await fetch("/api/waitlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      if (!res.ok) throw new Error("Server error");
+      setStatus("success");
+    } catch {
+      setErrors({ email: isEn ? "Something went wrong, please try again." : "Noe gikk galt, prøv igjen." });
+      setStatus("idle");
+    }
   };
 
   const set = (field: keyof FormData) => (

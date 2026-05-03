@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Zap, ArrowUpRight, ArrowDownLeft, Send, Plus, RefreshCw,
@@ -16,18 +16,35 @@ import { parseEther, isAddress } from "viem";
 import { baseSepolia } from "@/lib/wagmi";
 import { ConnectButton } from "./WalletConnect";
 
-// ─── Mock data ────────────────────────────────────────────────────────────────
+// ─── Data ─────────────────────────────────────────────────────────────────────
 
 const MOCK_BALANCE_NOKS = 12_450.00;
 
-const MOCK_TXS = [
-  { id: "tx1", type: "sent",     label: "Invoice — Acme GmbH",       amount: -2500,  currency: "NOKS", time: "2 min ago",   flag: "🇩🇪" },
-  { id: "tx2", type: "received", label: "Payment — Bergström AB",    amount: +8000,  currency: "NOKS", time: "1 hour ago",  flag: "🇸🇪" },
-  { id: "tx3", type: "sent",     label: "Supplier — Manila Logistics",amount: -1250, currency: "NOKS", time: "Yesterday",   flag: "🇵🇭" },
-  { id: "tx4", type: "received", label: "Top-up from DNB",           amount: +5000,  currency: "NOKS", time: "2 days ago",  flag: "🇳🇴" },
-  { id: "tx5", type: "sent",     label: "Freelancer — Priya Sharma", amount: -900,   currency: "NOKS", time: "3 days ago",  flag: "🇮🇳" },
-  { id: "tx6", type: "sent",     label: "Office supplies — Amazon",  amount: -350,   currency: "NOKS", time: "5 days ago",  flag: "🇩🇪" },
-];
+type Tx = {
+  id: string;
+  type: "sent" | "received";
+  label: string;
+  amount: number;
+  currency: string;
+  flag: string;
+  created_at: string;
+};
+
+function useDashboard() {
+  const [transactions, setTransactions] = useState<Tx[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/profile")
+      .then(() => fetch("/api/transactions"))
+      .then((r) => r.json())
+      .then(({ transactions }) => setTransactions(transactions ?? []))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  return { transactions, loading };
+}
 
 function truncate(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
@@ -338,6 +355,7 @@ export default function DashboardContent() {
   const [showBalance, setShowBalance] = useState(true);
   const [sendOpen, setSendOpen] = useState(false);
   const { user } = useUser();
+  const { transactions, loading } = useDashboard();
 
   const greeting = user?.firstName
     ? `Good morning, ${user.firstName}`
@@ -458,7 +476,13 @@ export default function DashboardContent() {
               </button>
             </div>
             <div className="divide-y divide-white/5">
-              {MOCK_TXS.map((tx, i) => (
+              {loading ? (
+                <div className="px-6 py-10 flex items-center justify-center gap-2 text-white/30 text-sm">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Loading transactions…
+                </div>
+              ) : transactions.length === 0 ? (
+                <div className="px-6 py-10 text-center text-white/30 text-sm">No transactions yet.</div>
+              ) : transactions.map((tx, i) => (
                 <motion.div key={tx.id}
                   initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
                   transition={{ duration: 0.3, delay: 0.28 + i * 0.05 }}
@@ -472,15 +496,17 @@ export default function DashboardContent() {
                   <div className="flex-1 min-w-0">
                     <p className="text-white text-sm font-medium truncate">{tx.flag} {tx.label}</p>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-white/30 text-xs">{tx.time}</span>
+                      <span className="text-white/30 text-xs">
+                        {new Date(tx.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                      </span>
                       <span className="flex items-center gap-1 text-green-400/60 text-xs">
                         <CheckCircle2 className="w-3 h-3" /> confirmed
                       </span>
                     </div>
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <p className={`font-bold text-sm ${tx.amount < 0 ? "text-red-400" : "text-green-400"}`}>
-                      {tx.amount > 0 ? "+" : ""}{fmt(tx.amount)}
+                    <p className={`font-bold text-sm ${tx.type === "sent" ? "text-red-400" : "text-green-400"}`}>
+                      {tx.type === "received" ? "+" : "-"}{fmt(tx.amount)}
                     </p>
                     <p className="text-white/30 text-xs">{tx.currency}</p>
                   </div>
