@@ -1,104 +1,11 @@
 "use client";
 
 import { motion } from "framer-motion";
-import PricingTable from "./PricingTable";
+import { PricingTable } from "@clerk/nextjs";
 import { useI18n } from "@/lib/i18n";
 
 export default function PricingPageContent() {
   const { locale } = useI18n();
-
-  const consumerTiers = [
-    {
-      name: "Personal",
-      price: "Free",
-      description: "For individuals sending money globally.",
-      features: [
-        "0.3% per transaction",
-        "Up to 50,000 NOK/month",
-        "BankID verification",
-        "USDC & EURC support",
-        "Mobile-friendly dashboard",
-        "Email support",
-      ],
-      cta: "Get started free",
-      ctaHref: "#waitlist",
-    },
-    {
-      name: "Premium",
-      price: "99 NOK",
-      period: "/month",
-      description: "For power users and frequent senders.",
-      features: [
-        "0.15% per transaction",
-        "Up to 500,000 NOK/month",
-        "Priority settlement",
-        "Multi-currency wallet",
-        "Advanced analytics",
-        "Priority support",
-        "Scheduled payments",
-      ],
-      cta: "Start premium",
-      ctaHref: "#waitlist",
-      highlight: true,
-      badge: "Most popular",
-    },
-  ];
-
-  const businessTiers = [
-    {
-      name: "Startup",
-      price: "299 NOK",
-      period: "/month",
-      description: "For small businesses and startups.",
-      features: [
-        "0.25% per transaction",
-        "Up to 5M NOK/month",
-        "API access",
-        "Fiken integration",
-        "3 team seats",
-        "Email & chat support",
-      ],
-      cta: "Start free trial",
-      ctaHref: "#waitlist",
-    },
-    {
-      name: "Business",
-      price: "999 NOK",
-      period: "/month",
-      description: "For growing businesses with high volumes.",
-      features: [
-        "0.15% per transaction",
-        "Up to 50M NOK/month",
-        "Full API suite + webhooks",
-        "Fiken & Tripletex integration",
-        "10 team seats",
-        "Dedicated account manager",
-        "Bulk payments",
-        "Custom reporting",
-      ],
-      cta: "Start free trial",
-      ctaHref: "#waitlist",
-      highlight: true,
-      badge: "Best value",
-    },
-    {
-      name: "Enterprise",
-      price: "Custom",
-      description: "For large organisations with complex needs.",
-      features: [
-        "Negotiated rates from 0.08%",
-        "Unlimited volume",
-        "White-label options",
-        "Custom integrations",
-        "Unlimited seats",
-        "SLA with 99.9% uptime",
-        "Dedicated infrastructure",
-        "On-site onboarding",
-      ],
-      cta: "Contact sales",
-      ctaHref: "mailto:enterprise@malvik.no",
-    },
-  ];
 
   return (
     <div className="pt-32 pb-24">
@@ -122,46 +29,68 @@ export default function PricingPageContent() {
           </p>
         </motion.div>
 
-        {/* Consumer tiers */}
+        {/* Clerk PricingTable — renders plans configured in Clerk Dashboard → Billing → Subscription plans */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          className="mb-4"
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="mb-20"
         >
-          <h2 className="text-2xl font-bold text-white mb-2">
-            {locale === "en" ? "Personal" : "Personlig"}
-          </h2>
-          <p className="text-white/40 text-sm mb-8">
-            {locale === "en" ? "For individuals and freelancers" : "For privatpersoner og frilansere"}
-          </p>
+          <PricingTable
+            appearance={{
+              variables: {
+                colorBackground: "#0d1240",
+                colorText: "#ffffff",
+                colorPrimary: "#2d6aff",
+                colorTextSecondary: "rgba(255,255,255,0.5)",
+                colorNeutral: "rgba(255,255,255,0.12)",
+                borderRadius: "1rem",
+                fontFamily: "inherit",
+              },
+            }}
+            checkoutProps={{
+              appearance: {
+                variables: {
+                  colorBackground: "#0d1240",
+                  colorText: "#ffffff",
+                  colorPrimary: "#2d6aff",
+                  borderRadius: "1rem",
+                  fontFamily: "inherit",
+                },
+              },
+            }}
+          />
         </motion.div>
-        <div className="max-w-3xl mb-20">
-          <PricingTable tiers={consumerTiers} />
-        </div>
 
-        {/* Business tiers */}
+        {/* Enterprise CTA */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          className="mb-4"
+          className="glass rounded-2xl p-8 border border-white/10 text-center mb-20"
         >
-          <h2 className="text-2xl font-bold text-white mb-2">
-            {locale === "en" ? "Business" : "Bedrift"}
-          </h2>
-          <p className="text-white/40 text-sm mb-8">
-            {locale === "en" ? "For companies of all sizes" : "For bedrifter i alle størrelser"}
+          <h3 className="text-white font-bold text-xl mb-2">
+            {locale === "en" ? "Need enterprise volume or custom integrations?" : "Trenger du stort volum eller egne integrasjoner?"}
+          </h3>
+          <p className="text-white/50 text-sm mb-6">
+            {locale === "en"
+              ? "Negotiated rates from 0.08%, white-label options, SLA, and dedicated infrastructure. Let's talk."
+              : "Forhandlede satser fra 0,08 %, hvit-merke-løsninger, SLA og dedikert infrastruktur. La oss snakke."}
           </p>
+          <a
+            href="mailto:enterprise@malvik.no"
+            className="btn-primary inline-flex items-center gap-2 px-6 py-3"
+          >
+            {locale === "en" ? "Contact sales" : "Kontakt salg"}
+          </a>
         </motion.div>
-        <PricingTable tiers={businessTiers} />
 
         {/* Fee comparison */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          className="mt-20 glass rounded-2xl p-8 sm:p-12 border border-white/10"
+          className="glass rounded-2xl p-8 sm:p-12 border border-white/10"
         >
           <h3 className="text-2xl font-bold text-white text-center mb-10">
             {locale === "en" ? "How we compare" : "Slik sammenligner vi oss"}

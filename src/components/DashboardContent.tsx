@@ -5,9 +5,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Zap, ArrowUpRight, ArrowDownLeft, Send, Plus, RefreshCw,
   TrendingUp, Eye, EyeOff, Clock, CheckCircle2, Copy, ExternalLink, X,
-  Loader2, ArrowRight, ChevronDown, Globe, AlertTriangle, Wallet
+  Loader2, ArrowRight, ChevronDown, Globe, AlertTriangle, Wallet, CreditCard
 } from "lucide-react";
 import Link from "next/link";
+import { useSubscription } from "@clerk/nextjs/experimental";
 import { useUser, UserButton } from "@clerk/nextjs";
 import {
   useAccount, useBalance, useSendTransaction, useChainId, useWaitForTransactionReceipt
@@ -356,6 +357,12 @@ export default function DashboardContent() {
   const [sendOpen, setSendOpen] = useState(false);
   const { user } = useUser();
   const { transactions, loading } = useDashboard();
+  const { data: subscription, isLoading: subLoading } = useSubscription();
+
+  const activePaidItem = subscription?.subscriptionItems?.find(
+    (item) => item.plan.hasBaseFee && item.status === "active"
+  );
+  const planName = activePaidItem?.plan?.name ?? "Free";
 
   const greeting = user?.firstName
     ? `Good morning, ${user.firstName}`
@@ -514,6 +521,36 @@ export default function DashboardContent() {
                 </motion.div>
               ))}
             </div>
+          </motion.div>
+
+          {/* Subscription status */}
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.32 }}
+            className="flex items-center justify-between glass rounded-2xl px-5 py-4 border border-white/10"
+          >
+            <div className="flex items-center gap-3">
+              <CreditCard className="w-4 h-4 text-blue-400 flex-shrink-0" />
+              <div>
+                <p className="text-white text-sm font-semibold">
+                  {subLoading ? "Loading plan…" : `${planName} plan`}
+                </p>
+                <p className="text-white/35 text-xs mt-0.5">
+                  {activePaidItem
+                    ? `Renews ${activePaidItem.periodEnd ? new Date(activePaidItem.periodEnd).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—"}`
+                    : "Upgrade to unlock lower fees and higher limits"}
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/pricing"
+              className={`text-xs font-semibold px-4 py-2 rounded-xl transition-colors ${
+                activePaidItem
+                  ? "text-white/50 hover:text-white border border-white/10 hover:border-white/20"
+                  : "btn-primary"
+              }`}
+            >
+              {activePaidItem ? "Manage plan" : "Upgrade"}
+            </Link>
           </motion.div>
 
           {/* Proto banner */}
