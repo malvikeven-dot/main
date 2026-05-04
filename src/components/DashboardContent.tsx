@@ -11,15 +11,15 @@ import Link from "next/link";
 import { useSubscription } from "@clerk/nextjs/experimental";
 import { useUser, UserButton } from "@clerk/nextjs";
 import {
-  useAccount, useBalance, useSendTransaction, useChainId, useWaitForTransactionReceipt
+  useAccount, useBalance, useSendTransaction, useChainId,
+  useWaitForTransactionReceipt, useReadContract, useWriteContract
 } from "wagmi";
-import { parseEther, isAddress } from "viem";
+import { parseEther, parseUnits, formatUnits, isAddress } from "viem";
 import { baseSepolia } from "@/lib/wagmi";
+import { ERC20_ABI, NOKS_ABI, TOKEN_ADDRESSES, TOKEN_META, type TokenSymbol } from "@/lib/tokens";
 import { ConnectButton } from "./WalletConnect";
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
-
-const MOCK_BALANCE_NOKS = 12_450.00;
 
 type Tx = {
   id: string;
@@ -55,6 +55,86 @@ function fmt(n: number, d = 2) {
   return n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
 }
 
+// ─── Token balance hook ───────────────────────────────────────────────────────
+
+function useTokenBalance(
+  tokenAddress: `0x${string}`,
+  walletAddress: `0x${string}` | undefined
+) {
+  const { data, isLoading, refetch } = useReadContract({
+    address: tokenAddress || undefined,
+    abi: ERC20_ABI,
+    functionName: "balanceOf",
+    args: walletAddress ? [walletAddress] : undefined,
+    query: { enabled: !!walletAddress && !!tokenAddress },
+    chainId: baseSepolia.id,
+  });
+  return { raw: data as bigint | undefined, isLoading, refetch };
+}
+
+// ─── Token balance card ───────────────────────────────────────────────────────
+
+function TokenCard({
+  symbol, balance, isLoading, showBalance, decimals,
+  isHero = false, comingSoon = false, onSend, onMint, isMinting,
+}: {
+  symbol: TokenSymbol;
+  balance: bigint | undefined;
+  isLoading: boolean;
+  showBalance: boolean;
+  decimals: number;
+  isHero?: boolean;
+  comingSoon?: boolean;
+  onSend?: () => void;
+  onMint?: () => void;
+  isMinting?: boolean;
+}) {
+  const meta = TOKEN_META[symbol];
+  const formatted = balance !== undefined
+    ? parseFloat(formatUnits(balance, decimals)).toLocaleString("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })
+    : "0.00";
+
+  if (comingSoon) {
+    return (
+      <div className={`glass rounded-2xl p-5 border ${meta.borderColor} flex flex-col items-center justify-center gap-2 min-h-[148px] opacity-50`}>
+        <span className={`text-xs font-bold uppercase tracking-wider ${meta.color}`}>{symbol}</span>
+        <span className="text-white/30 text-xs text-center">Coming soon</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`glass rounded-2xl p-5 border ${meta.borderColor} ${isHero ? "glow-blue" : ""} flex flex-col`}>
+      <p className={`text-xs font-semibold uppercase tracking-wider ${meta.color} mb-2`}>{symbol}</p>
+      {isLoading ? (
+        <div className={`rounded-lg bg-white/10 animate-pulse mb-3 ${isHero ? "h-10 w-3/4" : "h-7 w-2/3"}`} />
+      ) : (
+        <p className={`font-extrabold text-white mb-3 ${isHero ? "text-3xl" : "text-xl"}`}>
+          {showBalance ? formatted : "••••••"}
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2 mt-auto">
+        {onSend && (
+          <button onClick={onSend}
+            className="btn-primary flex items-center gap-1.5 px-3 py-1.5 text-xs">
+            <Send className="w-3 h-3" /> Send
+          </button>
+        )}
+        {onMint && (
+          <button onClick={onMint} disabled={isMinting}
+            className="btn-secondary flex items-center gap-1.5 px-3 py-1.5 text-xs border border-white/15 disabled:opacity-50">
+            {isMinting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+            {isMinting ? "Minting…" : "Get 1,000 test"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Send Modal ───────────────────────────────────────────────────────────────
 
 function SendModal({ onClose }: { onClose: () => void }) {
@@ -68,9 +148,12 @@ function SendModal({ onClose }: { onClose: () => void }) {
   const [note, setNote]           = useState("");
   const [txHash, setTxHash]       = useState<`0x${string}` | undefined>();
   const [mockMode, setMockMode]   = useState(false);
+  const [selectedToken, setSelectedToken] = useState<"NOKS" | "USDC" | "ETH">("NOKS");
 
-  const { sendTransaction, isPending: isSending } = useSendTransaction();
-  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash: txHash });
+  const { sendTransaction, isPending: isSendingEth } = useSendTransaction();
+  const { writeContract: writeERC20, isPending: isSendingToken } = useWriteContract();
+  const isSending = isSendingEth || isSendingToken;
+  const { isLoading: isConfirming } = useWaitForTransactionReceipt({ hash: txHash });
 
   const validRecipient = recipient.trim().length > 0 && (isAddress(recipient) || !isConnected);
   const validAmount = parseFloat(amount) > 0;
@@ -78,16 +161,57 @@ function SendModal({ onClose }: { onClose: () => void }) {
 
   const handleSend = () => {
     if (!isConnected || !onCorrectChain || mockMode) {
-      // mock flow
       setStep("sending");
       setTimeout(() => { setStep("done"); }, 2000);
       return;
     }
     setStep("sending");
-    sendTransaction(
-      { to: recipient as `0x${string}`, value: parseEther(amount) },
+
+    if (selectedToken === "ETH") {
+      sendTransaction(
+        { to: recipient as `0x${string}`, value: parseEther(amount) },
+        {
+          onSuccess: (hash) => { setTxHash(hash); setStep("done"); },
+          onError: () => setStep("confirm"),
+        }
+      );
+      return;
+    }
+
+    // ERC-20 transfer (NOKS or USDC)
+    const tokenAddr = selectedToken === "NOKS" ? TOKEN_ADDRESSES.NOKS : TOKEN_ADDRESSES.USDC;
+    const decimals = TOKEN_META[selectedToken].decimals;
+
+    writeERC20(
       {
-        onSuccess: (hash) => { setTxHash(hash); setStep("done"); },
+        address: tokenAddr,
+        abi: ERC20_ABI,
+        functionName: "transfer",
+        args: [recipient as `0x${string}`, parseUnits(amount, decimals)],
+      },
+      {
+        onSuccess: async (hash) => {
+          setTxHash(hash);
+          setStep("done");
+          try {
+            await fetch("/api/transactions", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                type: "sent",
+                label: note
+                  ? `${selectedToken} — ${note}`
+                  : `${selectedToken} transfer to ${(recipient as string).slice(0, 8)}…`,
+                amount: parseFloat(amount),
+                currency: selectedToken,
+                flag: "🌐",
+                txHash: hash,
+              }),
+            });
+          } catch {
+            // Non-fatal — on-chain tx already succeeded
+          }
+        },
         onError: () => setStep("confirm"),
       }
     );
@@ -112,7 +236,22 @@ function SendModal({ onClose }: { onClose: () => void }) {
         <AnimatePresence mode="wait">
           {step === "form" && (
             <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <h2 className="text-xl font-bold text-white mb-1">Send ETH</h2>
+              {/* Token selector */}
+              <div className="flex gap-2 mb-5">
+                {(["NOKS", "USDC", "ETH"] as const).map((t) => (
+                  <button key={t} onClick={() => setSelectedToken(t)}
+                    className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-all ${
+                      selectedToken === t
+                        ? "btn-primary border-transparent"
+                        : "glass border-white/15 text-white/50 hover:text-white"
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+
+              <h2 className="text-xl font-bold text-white mb-1">Send {selectedToken}</h2>
               <p className="text-white/40 text-xs mb-5">
                 {isConnected && onCorrectChain
                   ? <>Live on <span className="text-blue-400">Base Sepolia</span> testnet</>
@@ -152,12 +291,12 @@ function SendModal({ onClose }: { onClose: () => void }) {
 
               <div className="mb-4">
                 <label className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-2 block">
-                  Amount (ETH)
+                  Amount ({selectedToken})
                 </label>
                 <input type="number" min="0" step="0.001" value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  placeholder="0.001" className={inputCls} />
-                {isConnected && <LiveBalance address={address} />}
+                  placeholder="0.00" className={inputCls} />
+                {isConnected && selectedToken === "ETH" && <LiveBalance address={address} />}
               </div>
 
               <div className="mb-6">
@@ -185,7 +324,7 @@ function SendModal({ onClose }: { onClose: () => void }) {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-white/40">Amount</span>
-                  <span className="text-white font-bold">{amount} ETH</span>
+                  <span className="text-white font-bold">{amount} {selectedToken}</span>
                 </div>
                 {note && (
                   <div className="flex justify-between text-sm">
@@ -358,6 +497,24 @@ export default function DashboardContent() {
   const { user } = useUser();
   const { transactions, loading } = useDashboard();
   const { data: subscription, isLoading: subLoading } = useSubscription();
+  const { address, isConnected } = useAccount();
+
+  const noksBalance = useTokenBalance(TOKEN_ADDRESSES.NOKS, address);
+  const usdcBalance = useTokenBalance(TOKEN_ADDRESSES.USDC, address);
+
+  const { writeContract: mintNoks, isPending: isMinting } = useWriteContract();
+  const handleMintNoks = () => {
+    if (!address) return;
+    mintNoks(
+      {
+        address: TOKEN_ADDRESSES.NOKS,
+        abi: NOKS_ABI,
+        functionName: "mint",
+        args: [address, parseUnits("1000", 18)],
+      },
+      { onSuccess: () => setTimeout(() => noksBalance.refetch(), 3000) }
+    );
+  };
 
   const activePaidItem = subscription?.subscriptionItems?.find(
     (item) => item.plan.hasBaseFee && item.status === "active"
@@ -409,47 +566,51 @@ export default function DashboardContent() {
           {/* Live wallet card */}
           <LiveWalletCard />
 
-          {/* Mock NOKS balance card */}
+          {/* Token balances panel */}
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.1 }}
-            className="glass-blue rounded-3xl p-6 sm:p-8 border border-blue-400/25 relative overflow-hidden glow-blue"
           >
-            <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full pointer-events-none"
-              style={{ background: "radial-gradient(circle, rgba(45,106,255,0.2) 0%, transparent 70%)" }} />
-
-            <div className="relative">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-1">NOKS balance</p>
-                  <div className="flex items-end gap-3">
-                    <h1 className="text-4xl sm:text-5xl font-extrabold text-white">
-                      {showBalance ? fmt(MOCK_BALANCE_NOKS) : "••••••"}
-                    </h1>
-                    <span className="text-blue-400 font-bold text-xl mb-1">NOKS</span>
-                  </div>
-                  <p className="text-white/30 text-sm mt-1">
-                    ≈ ${showBalance ? fmt(MOCK_BALANCE_NOKS * 0.088) : "••••"} USD · mock balance
-                  </p>
-                </div>
-                <button onClick={() => setShowBalance(!showBalance)}
-                  className="text-white/30 hover:text-white transition-colors p-2 glass rounded-xl border border-white/10">
-                  {showBalance ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                </button>
-              </div>
-
-              <div className="flex flex-wrap gap-3">
-                <button onClick={() => setSendOpen(true)}
-                  className="btn-primary flex items-center gap-2 px-5 py-2.5 text-sm">
-                  <Send className="w-4 h-4" /> Send
-                </button>
-                <button className="btn-secondary flex items-center gap-2 px-5 py-2.5 text-sm border border-white/15">
-                  <Plus className="w-4 h-4" /> Add funds
-                </button>
-                <button className="btn-secondary flex items-center gap-2 px-5 py-2.5 text-sm border border-white/15">
-                  <RefreshCw className="w-4 h-4" /> Convert
-                </button>
-              </div>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-white/40 text-xs font-semibold uppercase tracking-wider">Token balances</p>
+              <button onClick={() => setShowBalance(!showBalance)}
+                className="text-white/30 hover:text-white transition-colors p-1.5 glass rounded-xl border border-white/10">
+                {showBalance ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+              </button>
             </div>
+            <div className="grid grid-cols-3 gap-4">
+              <TokenCard
+                symbol="USDC"
+                balance={usdcBalance.raw}
+                isLoading={usdcBalance.isLoading && isConnected}
+                showBalance={showBalance}
+                decimals={6}
+                onSend={isConnected ? () => setSendOpen(true) : undefined}
+              />
+              <TokenCard
+                symbol="NOKS"
+                balance={noksBalance.raw}
+                isLoading={noksBalance.isLoading && isConnected}
+                showBalance={showBalance}
+                decimals={18}
+                isHero
+                onSend={isConnected ? () => setSendOpen(true) : undefined}
+                onMint={isConnected ? handleMintNoks : undefined}
+                isMinting={isMinting}
+              />
+              <TokenCard
+                symbol="EURC"
+                balance={undefined}
+                isLoading={false}
+                showBalance={showBalance}
+                decimals={6}
+                comingSoon
+              />
+            </div>
+            {!isConnected && (
+              <p className="text-white/30 text-xs mt-2 text-center">
+                Connect your wallet above to see live on-chain balances
+              </p>
+            )}
           </motion.div>
 
           {/* Stats */}
@@ -557,8 +718,8 @@ export default function DashboardContent() {
           <div className="flex items-center gap-3 glass rounded-2xl px-5 py-3.5 border border-yellow-500/20 text-sm">
             <Globe className="w-4 h-4 text-yellow-400 flex-shrink-0" />
             <p className="text-white/50">
-              <span className="text-yellow-400 font-semibold">Prototype</span> — NOKS balance is simulated.
-              Connect a wallet to send real ETH on Base Sepolia testnet.
+              <span className="text-yellow-400 font-semibold">Prototype</span> — Real NOKS &amp; USDC balances from Base Sepolia.
+              EURC support coming soon.
             </p>
           </div>
 
